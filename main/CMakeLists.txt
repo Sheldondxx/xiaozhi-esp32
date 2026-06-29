@@ -580,6 +580,11 @@ elseif(CONFIG_BOARD_TYPE_BREAD_COMPACT_WIFI_LCD)
     set(BUILTIN_TEXT_FONT font_puhui_basic_16_4)
     set(BUILTIN_ICON_FONT font_awesome_16_4)
     set(DEFAULT_EMOJI_COLLECTION twemoji_32)
+elseif(CONFIG_BOARD_TYPE_BREAD_COMPACT_WIFI_LCD_SERVO)
+    set(BOARD_TYPE "bread-compact-wifi-lcd-servo")
+    set(BUILTIN_TEXT_FONT font_puhui_basic_16_4)
+    set(BUILTIN_ICON_FONT font_awesome_16_4)
+    set(DEFAULT_EMOJI_COLLECTION twemoji_32)
 elseif(CONFIG_BOARD_TYPE_TUDOUZI)
     set(BOARD_TYPE "tudouzi")
     set(BUILTIN_TEXT_FONT font_puhui_basic_14_1)
@@ -1029,6 +1034,9 @@ if(CONFIG_BOARD_TYPE_ESP_VOCAT)
         espressif__touch_slider_sensor
         espressif__touch_button_sensor
     )
+endif()
+if(CONFIG_BOARD_TYPE_BREAD_COMPACT_WIFI_LCD_SERVO)
+    list(APPEND MAIN_PRIV_REQUIRES_EXTRA esp_driver_ledc)
 endif()
 
 idf_component_register(SRCS ${SOURCES}
