@@ -5,6 +5,8 @@
 #include "button.h"
 #include "config.h"
 #include "mcp_server.h"
+#include "led/single_led.h"
+#include "lamp_controller.h"
 
 #include <esp_log.h>
 #include <driver/gpio.h>
@@ -13,6 +15,59 @@
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_vendor.h>
+
+#if defined(LCD_TYPE_ILI9341_SERIAL)
+#include "esp_lcd_ili9341.h"
+#endif
+
+#if defined(LCD_TYPE_GC9A01_SERIAL)
+#include "esp_lcd_gc9a01.h"
+static const gc9a01_lcd_init_cmd_t gc9107_lcd_init_cmds[] = {
+    //  {cmd, { data }, data_size, delay_ms}
+    {0xfe, (uint8_t[]){0x00}, 0, 0},
+    {0xef, (uint8_t[]){0x00}, 0, 0},
+    {0xb0, (uint8_t[]){0xc0}, 1, 0},
+    {0xb1, (uint8_t[]){0x80}, 1, 0},
+    {0xb2, (uint8_t[]){0x27}, 1, 0},
+    {0xb3, (uint8_t[]){0x13}, 1, 0},
+    {0xb6, (uint8_t[]){0x19}, 1, 0},
+    {0xb7, (uint8_t[]){0x05}, 1, 0},
+    {0xac, (uint8_t[]){0xc8}, 1, 0},
+    {0xab, (uint8_t[]){0x0f}, 1, 0},
+    {0x3a, (uint8_t[]){0x05}, 1, 0},
+    {0xb4, (uint8_t[]){0x04}, 1, 0},
+    {0xa8, (uint8_t[]){0x08}, 1, 0},
+    {0xb8, (uint8_t[]){0x08}, 1, 0},
+    {0xea, (uint8_t[]){0x02}, 1, 0},
+    {0xe8, (uint8_t[]){0x2A}, 1, 0},
+    {0xe9, (uint8_t[]){0x47}, 1, 0},
+    {0xe7, (uint8_t[]){0x5f}, 1, 0},
+    {0xc6, (uint8_t[]){0x21}, 1, 0},
+    {0xc7, (uint8_t[]){0x15}, 1, 0},
+    {0xf0,
+    (uint8_t[]){0x1D, 0x38, 0x09, 0x4D, 0x92, 0x2F, 0x35, 0x52, 0x1E, 0x0C,
+                0x04, 0x12, 0x14, 0x1f},
+    14, 0},
+    {0xf1,
+    (uint8_t[]){0x16, 0x3D, 0x25, 0x50, 0x90, 0x2C, 0x38, 0x56, 0x1C, 0x0F,
+                0x08, 0x17, 0x19, 0x1E},
+    14, 0},
+    {0xf2, (uint8_t[]){0x07}, 1, 0},
+    {0xf3, (uint8_t[]){0x0A}, 1, 0},
+    {0xf4, (uint8_t[]){0x04}, 1, 0},
+    {0xf5, (uint8_t[]){0x09}, 1, 0},
+    {0xf6, (uint8_t[]){0x07}, 1, 0},
+    {0xf7, (uint8_t[]){0x05}, 1, 0},
+    {0xf8, (uint8_t[]){0x3D}, 1, 0},
+    {0xf9, (uint8_t[]){0x0C}, 1, 0},
+    {0xfa, (uint8_t[]){0x06}, 1, 0},
+    {0xfc, (uint8_t[]){0x04}, 1, 0},
+    {0xfd, (uint8_t[]){0x06}, 1, 0},
+    {0xff, (uint8_t[]){0x04}, 1, 0},
+    {0x11, (uint8_t[]){0x00}, 0, 120},
+    {0x29, (uint8_t[]){0x00}, 0, 0},
+};
+#endif
 
 #define TAG "CompactWifiBoardLcdServo"
 
@@ -30,9 +85,6 @@ class CompactWifiBoardLcdServo : public WifiBoard {
 private:
     Button boot_button_;
     LcdDisplay* display_;
-
-    // Lamp state
-    bool lamp_on_;
 
     // Servo state
     int pan_angle_;
@@ -62,7 +114,7 @@ private:
         esp_lcd_panel_io_spi_config_t io_config = {};
         io_config.cs_gpio_num = DISPLAY_SPI_CS_PIN;
         io_config.dc_gpio_num = DISPLAY_DC_PIN;
-        io_config.spi_mode = 2;
+        io_config.spi_mode = DISPLAY_SPI_MODE;
         io_config.pclk_hz = 40 * 1000 * 1000;
         io_config.trans_queue_depth = 10;
         io_config.lcd_cmd_bits = 8;
@@ -71,13 +123,23 @@ private:
 
         esp_lcd_panel_dev_config_t panel_config = {};
         panel_config.reset_gpio_num = DISPLAY_RST_PIN;
-        panel_config.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB;
+        panel_config.rgb_ele_order = DISPLAY_RGB_ORDER;
         panel_config.bits_per_pixel = 16;
+#if defined(LCD_TYPE_ILI9341_SERIAL)
+        ESP_ERROR_CHECK(esp_lcd_new_panel_ili9341(panel_io, &panel_config, &panel));
+#elif defined(LCD_TYPE_GC9A01_SERIAL)
+        ESP_ERROR_CHECK(esp_lcd_new_panel_gc9a01(panel_io, &panel_config, &panel));
+        gc9a01_vendor_config_t gc9107_vendor_config = {
+            .init_cmds = gc9107_lcd_init_cmds,
+            .init_cmds_size = sizeof(gc9107_lcd_init_cmds) / sizeof(gc9a01_lcd_init_cmd_t),
+        };
+#else
         ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(panel_io, &panel_config, &panel));
+#endif
 
         esp_lcd_panel_reset(panel);
         esp_lcd_panel_init(panel);
-        esp_lcd_panel_invert_color(panel, true);
+        esp_lcd_panel_invert_color(panel, DISPLAY_INVERT_COLOR);
         esp_lcd_panel_swap_xy(panel, DISPLAY_SWAP_XY);
         esp_lcd_panel_mirror(panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
 
@@ -189,17 +251,9 @@ private:
      * @brief Register MCP tools for lamp and servo control
      */
     void InitializeTools() {
-        auto& mcp_server = McpServer::GetInstance();
+        static LampController lamp(LAMP_GPIO);
 
-        // Lamp controller (direct GPIO toggle)
-        mcp_server.AddTool("self.lamp.toggle",
-            "Turn the lamp on/off (GPIO18)",
-            PropertyList(),
-            [this](const PropertyList&) -> ReturnValue {
-                lamp_on_ = !lamp_on_;
-                gpio_set_level((gpio_num_t)LAMP_GPIO, lamp_on_ ? 1 : 0);
-                return lamp_on_;
-            });
+        auto& mcp_server = McpServer::GetInstance();
 
         // Pan servo control
         mcp_server.AddTool("self.servo.pan",
@@ -244,38 +298,30 @@ public:
     CompactWifiBoardLcdServo()
         : boot_button_(BOOT_BUTTON_GPIO)
         , display_(nullptr)
-        , lamp_on_(false)
         , pan_angle_(45)
         , tilt_angle_(45) {
         ESP_LOGI(TAG, "Initializing Bread Compact WiFi + LCD + Servo board");
-
-        // Initialize lamp GPIO
-        gpio_config_t lamp_cfg = {};
-        lamp_cfg.pin_bit_mask = (1ULL << LAMP_GPIO);
-        lamp_cfg.mode = GPIO_MODE_OUTPUT;
-        lamp_cfg.pull_up_en = GPIO_PULLUP_DISABLE;
-        lamp_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
-        lamp_cfg.intr_type = GPIO_INTR_DISABLE;
-        gpio_config(&lamp_cfg);
 
         InitializeSpi();
         InitializeDisplay();
         InitializeButtons();
         InitializeServo();
         InitializeTools();
-        GetBacklight()->SetBrightness(100);
+        if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
+            GetBacklight()->RestoreBrightness();
+        }
     }
 
     virtual AudioCodec* GetAudioCodec() override {
         static NoAudioCodecSimplex audio_codec(
             AUDIO_INPUT_SAMPLE_RATE,
             AUDIO_OUTPUT_SAMPLE_RATE,
-            AUDIO_I2S_MIC_GPIO_SCK,
-            AUDIO_I2S_MIC_GPIO_WS,
             AUDIO_I2S_SPK_GPIO_BCLK,
             AUDIO_I2S_SPK_GPIO_LRCK,
-            AUDIO_I2S_MIC_GPIO_DIN,
-            AUDIO_I2S_SPK_GPIO_DOUT);
+            AUDIO_I2S_SPK_GPIO_DOUT,
+            AUDIO_I2S_MIC_GPIO_SCK,
+            AUDIO_I2S_MIC_GPIO_WS,
+            AUDIO_I2S_MIC_GPIO_DIN);
         return &audio_codec;
     }
 
@@ -283,9 +329,17 @@ public:
         return display_;
     }
 
+    virtual Led* GetLed() override {
+        static SingleLed led(BUILTIN_LED_GPIO);
+        return &led;
+    }
+
     virtual Backlight* GetBacklight() override {
-        static PwmBacklight backlight(DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT);
-        return &backlight;
+        if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
+            static PwmBacklight backlight(DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT);
+            return &backlight;
+        }
+        return nullptr;
     }
 };
 

@@ -48,6 +48,10 @@
 #define DISPLAY_BACKLIGHT_PIN          GPIO_NUM_42
 #define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
 
+#define DISPLAY_SPI_MODE        0
+#define DISPLAY_RGB_ORDER       LCD_RGB_ELEMENT_ORDER_RGB
+#define DISPLAY_INVERT_COLOR    true
+
 // ==================== Servo Configuration ====================
 // Pan (horizontal) servo
 #define SERVO_PAN_GPIO GPIO_NUM_1
