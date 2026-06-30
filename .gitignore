@@ -18,3 +18,10 @@ main/mmap_generate_emoji.h
 *.bin
 mmap_generate_*.h
 .clangd
+
+# graphify — track query data, ignore generated artifacts
+graphify-out/*
+!graphify-out/graph.json
+!graphify-out/cost.json
+!graphify-out/.graphify_python
+!graphify-out/.graphify_root
