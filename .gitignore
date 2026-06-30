@@ -23,7 +23,5 @@ mmap_generate_*.h
 graphify-out/*
 !graphify-out/graph.json
 !graphify-out/cost.json
-!graphify-out/.graphify_python
-!graphify-out/.graphify_root
 .graphify_cache/
 main/graphify-out/
